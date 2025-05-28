@@ -1,186 +1,382 @@
 // Variáveis globais
 let synth = window.speechSynthesis;
-let vozAtual = null;
-let reproduzindo = false;
-let statusElement;
-let btnReproduzir;
-let btnBaixar;
+let utterance = null;
+let isProcessing = false;
+let isSpeaking = false;
+let audioContext = null;
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+let audioStream = null;
 
-// Inicialização do meSpeak
-document.addEventListener('DOMContentLoaded', function() {
-    statusElement = document.getElementById('status');
-    btnReproduzir = document.getElementById('btnReproduzir');
-    btnBaixar = document.getElementById('btnBaixar');
+// Elementos do DOM
+document.addEventListener('DOMContentLoaded', () => {
+    const textInput = document.getElementById('text-input');
+    const languageSelect = document.getElementById('language-select');
+    const speedControl = document.getElementById('speed-control');
+    const speedValue = document.getElementById('speed-value');
+    const playBtn = document.getElementById('play-btn');
+    const downloadBtn = document.getElementById('download-btn');
+    const statusMessage = document.getElementById('status-message');
+    const wordCount = document.getElementById('word-count');
+    const charCount = document.getElementById('char-count');
+
+    // Inicialização
+    checkBrowserSupport();
     
-    // Inicializar meSpeak
-    statusElement.textContent = "Carregando vozes...";
+    // Garantir que as vozes sejam carregadas corretamente
+    // Isso é crucial para navegadores como Chrome e Edge
+    setTimeout(() => {
+        loadVoices();
+    }, 1000);
     
-    // Carregar voz em inglês
-    meSpeak.loadVoice('lib/voices/en/en-us.json', function(success, message) {
-        if (success) {
-            console.log("Voz inglês carregada: " + message);
+    // Event listeners
+    textInput.addEventListener('input', updateTextStats);
+    speedControl.addEventListener('input', updateSpeedValue);
+    playBtn.addEventListener('click', handlePlayStop);
+    downloadBtn.addEventListener('click', handleDownload);
+
+    // Funções
+    function checkBrowserSupport() {
+        if (!('speechSynthesis' in window)) {
+            statusMessage.textContent = 'Seu navegador não suporta a API de síntese de fala.';
+            playBtn.disabled = true;
+            downloadBtn.disabled = true;
+        }
+    }
+
+    function loadVoices() {
+        // Garantir que as vozes estejam carregadas
+        let voices = [];
+        
+        function setVoices() {
+            voices = synth.getVoices();
+            console.log("Vozes disponíveis:", voices.length);
             
-            // Carregar voz em português
-            meSpeak.loadVoice('lib/voices/pt/pt-pt.json', function(success, message) {
-                if (success) {
-                    console.log("Voz português carregada: " + message);
-                    statusElement.textContent = "Vozes carregadas com sucesso!";
-                    
-                    // Definir voz padrão
-                    meSpeak.setDefaultVoice('en-us');
-                    
-                    // Habilitar botões
-                    btnReproduzir.disabled = false;
-                    btnBaixar.disabled = false;
-                } else {
-                    statusElement.textContent = "Erro ao carregar voz em português.";
-                    console.error("Erro ao carregar voz em português:", message);
-                }
-            });
+            // Verificar se há vozes disponíveis e atualizar a interface
+            if (voices.length === 0) {
+                statusMessage.textContent = 'Nenhuma voz disponível no seu navegador. A reprodução pode não funcionar.';
+            } else {
+                // Listar as vozes disponíveis no console para debug
+                voices.forEach((voice, index) => {
+                    console.log(`Voz ${index}: ${voice.name} (${voice.lang})`);
+                });
+            }
+        }
+        
+        setVoices();
+        
+        if (synth.onvoiceschanged !== undefined) {
+            synth.onvoiceschanged = setVoices;
+        }
+    }
+
+    function updateTextStats() {
+        const text = textInput.value;
+        const words = text.trim() === '' ? 0 : text.trim().split(/\s+/).length;
+        const chars = text.length;
+        
+        wordCount.textContent = words;
+        charCount.textContent = chars;
+    }
+
+    function updateSpeedValue() {
+        const speed = speedControl.value;
+        speedValue.textContent = `${speed}x`;
+    }
+
+    // Função para lidar com o botão de reprodução/parada
+    function handlePlayStop() {
+        if (isSpeaking) {
+            stopSpeaking();
         } else {
-            statusElement.textContent = "Erro ao carregar voz em inglês.";
-            console.error("Erro ao carregar voz em inglês:", message);
+            startSpeaking();
         }
-    });
-    
-    // Configurar contadores
-    const textoArea = document.getElementById('texto');
-    textoArea.addEventListener('input', atualizarContadores);
-    
-    // Configurar controle de velocidade
-    const velocidadeInput = document.getElementById('velocidade');
-    const valorVelocidade = document.getElementById('valorVelocidade');
-    velocidadeInput.addEventListener('input', function() {
-        const valor = velocidadeInput.value;
-        const normalizado = ((valor - 120) / 80).toFixed(1);
-        valorVelocidade.textContent = normalizado + 'x';
-    });
-    
-    // Configurar botões
-    btnReproduzir.addEventListener('click', toggleReproducao);
-    btnBaixar.addEventListener('click', baixarAudio);
-    
-    // Configurar seleção de idioma
-    document.getElementById('idioma').addEventListener('change', function() {
-        const idioma = this.value;
-        if (idioma === 'en') {
-            meSpeak.setDefaultVoice('en-us');
-        } else if (idioma === 'pt') {
-            meSpeak.setDefaultVoice('pt-pt');
+    }
+
+    // Função para parar a reprodução
+    function stopSpeaking() {
+        if (synth.speaking) {
+            synth.cancel();
         }
-    });
-    
-    // Desabilitar botões até que as vozes sejam carregadas
-    btnReproduzir.disabled = true;
-    btnBaixar.disabled = true;
-});
+        
+        isSpeaking = false;
+        isProcessing = false;
+        playBtn.textContent = 'Reproduzir';
+        statusMessage.textContent = 'Reprodução interrompida.';
+        
+        // Parar gravação se estiver em andamento
+        if (isRecording) {
+            stopRecording();
+        }
+    }
 
-// Função para atualizar contadores de palavras e caracteres
-function atualizarContadores() {
-    const texto = document.getElementById('texto').value;
-    const contadorPalavras = document.getElementById('contadorPalavras');
-    const contadorCaracteres = document.getElementById('contadorCaracteres');
-    
-    // Contar caracteres
-    contadorCaracteres.textContent = texto.length;
-    
-    // Contar palavras
-    const palavras = texto.trim().split(/\s+/).filter(palavra => palavra.length > 0);
-    contadorPalavras.textContent = palavras.length;
-}
+    // Função para iniciar a reprodução
+    function startSpeaking() {
+        if (isProcessing) return;
+        
+        const text = textInput.value.trim();
+        if (text === '') {
+            statusMessage.textContent = 'Por favor, digite algum texto para converter em fala.';
+            return;
+        }
 
-// Função para alternar entre reproduzir e parar
-function toggleReproducao() {
-    const texto = document.getElementById('texto').value.trim();
-    
-    if (!texto) {
-        statusElement.textContent = "Por favor, digite algum texto para reproduzir.";
-        return;
+        // Verificar se há vozes disponíveis
+        const voices = synth.getVoices();
+        if (voices.length === 0) {
+            statusMessage.textContent = 'Nenhuma voz disponível no seu navegador. Tente em outro navegador como Chrome ou Edge.';
+            return;
+        }
+
+        isProcessing = true;
+        isSpeaking = true;
+        statusMessage.textContent = 'Processando...';
+        playBtn.textContent = 'Parar';
+
+        // Criar nova utterance
+        utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = languageSelect.value;
+        utterance.rate = parseFloat(speedControl.value);
+        
+        // Selecionar a voz apropriada
+        let selectedVoice = null;
+        
+        // Tentar encontrar uma voz para o idioma selecionado
+        for (let voice of voices) {
+            if (voice.lang.includes(languageSelect.value.split('-')[0])) {
+                selectedVoice = voice;
+                break;
+            }
+        }
+        
+        // Se não encontrar, usar a primeira voz disponível
+        if (!selectedVoice && voices.length > 0) {
+            selectedVoice = voices[0];
+        }
+        
+        if (selectedVoice) {
+            utterance.voice = selectedVoice;
+            console.log("Voz selecionada:", selectedVoice.name);
+        }
+
+        // Eventos da utterance
+        utterance.onend = () => {
+            playBtn.textContent = 'Reproduzir';
+            statusMessage.textContent = 'Reprodução concluída.';
+            isProcessing = false;
+            isSpeaking = false;
+            
+            // Parar gravação se estiver em andamento
+            if (isRecording) {
+                stopRecording();
+            }
+        };
+
+        utterance.onerror = (event) => {
+            playBtn.textContent = 'Reproduzir';
+            statusMessage.textContent = `Erro: ${event.error}`;
+            console.error("Erro na síntese de voz:", event);
+            isProcessing = false;
+            isSpeaking = false;
+            
+            // Parar gravação se estiver em andamento
+            if (isRecording) {
+                stopRecording();
+            }
+        };
+
+        // Reproduzir
+        try {
+            synth.speak(utterance);
+            
+            // Verificar se a síntese começou
+            setTimeout(() => {
+                if (!synth.speaking && isSpeaking) {
+                    statusMessage.textContent = 'Falha na síntese de voz. Tente em outro navegador como Chrome ou Edge.';
+                    playBtn.textContent = 'Reproduzir';
+                    isProcessing = false;
+                    isSpeaking = false;
+                }
+            }, 1000);
+        } catch (error) {
+            console.error("Exceção ao iniciar síntese:", error);
+            statusMessage.textContent = `Erro ao iniciar síntese: ${error.message}`;
+            playBtn.textContent = 'Reproduzir';
+            isProcessing = false;
+            isSpeaking = false;
+        }
     }
     
-    if (reproduzindo) {
-        // Parar reprodução
-        meSpeak.stop();
-        btnReproduzir.textContent = "Reproduzir";
-        reproduzindo = false;
-        statusElement.textContent = "Reprodução interrompida.";
-    } else {
-        // Iniciar reprodução
-        const velocidade = document.getElementById('velocidade').value;
-        const idioma = document.getElementById('idioma').value;
+    // Função para lidar com o download
+    function handleDownload() {
+        const text = textInput.value.trim();
+        if (text === '') {
+            statusMessage.textContent = 'Por favor, digite algum texto para converter em fala.';
+            return;
+        }
         
-        statusElement.textContent = "Reproduzindo...";
-        btnReproduzir.textContent = "Parar";
-        reproduzindo = true;
-        
-        // Configurar voz baseada no idioma
-        const voz = idioma === 'en' ? 'en-us' : 'pt-pt';
-        
-        // Reproduzir com meSpeak
-        meSpeak.speak(texto, { 
-            voice: voz,
-            speed: parseInt(velocidade),
-            pitch: 50,
-            amplitude: 100
-        }, function(success, id) {
-            if (success) {
-                console.log("Reprodução concluída, ID:", id);
-                btnReproduzir.textContent = "Reproduzir";
-                reproduzindo = false;
-                statusElement.textContent = "Reprodução concluída.";
-            } else {
-                console.error("Erro na reprodução, ID:", id);
-                btnReproduzir.textContent = "Reproduzir";
-                reproduzindo = false;
-                statusElement.textContent = "Erro na reprodução.";
+        // Verificar se o MediaRecorder é suportado
+        if (window.MediaRecorder) {
+            try {
+                // Tentar iniciar a gravação
+                startRecording().then(() => {
+                    // Após iniciar a gravação, iniciar a reprodução
+                    if (!isSpeaking) {
+                        startSpeaking();
+                    }
+                    statusMessage.textContent = 'Gravando áudio para download...';
+                }).catch(error => {
+                    console.error('Erro ao iniciar gravação:', error);
+                    statusMessage.textContent = 'Não foi possível acessar o microfone. Usando método alternativo.';
+                    
+                    // Fallback para serviços externos
+                    useExternalService(text);
+                });
+            } catch (error) {
+                console.error('Erro ao configurar gravação:', error);
+                statusMessage.textContent = 'Erro ao configurar gravação. Usando método alternativo.';
+                
+                // Fallback para serviços externos
+                useExternalService(text);
             }
+        } else {
+            // Fallback para serviços externos se MediaRecorder não for suportado
+            statusMessage.textContent = 'Seu navegador não suporta gravação de áudio. Usando método alternativo.';
+            useExternalService(text);
+        }
+    }
+    
+    // Função para usar serviços externos (fallback)
+    function useExternalService(text) {
+        // Determinar qual serviço usar com base no idioma
+        const lang = languageSelect.value;
+        let serviceUrl = '';
+        
+        if (lang === 'pt-BR') {
+            serviceUrl = 'https://ttsmp3.com/text-to-speech/Portuguese/';
+        } else {
+            serviceUrl = 'https://ttsmp3.com/text-to-speech/American%20English/';
+        }
+        
+        // Copiar o texto para a área de transferência
+        navigator.clipboard.writeText(text).then(() => {
+            // Abrir o serviço em uma nova aba
+            window.open(serviceUrl, '_blank');
+            
+            statusMessage.textContent = 'Texto copiado para a área de transferência. Aberto serviço externo para conversão.';
+        }).catch(err => {
+            console.error('Erro ao copiar texto:', err);
+            
+            // Se não conseguir copiar, apenas abrir o serviço
+            window.open(serviceUrl, '_blank');
+            
+            statusMessage.textContent = 'Aberto serviço externo para conversão. Cole seu texto lá para gerar o áudio.';
         });
     }
-}
-
-// Função para baixar o áudio
-function baixarAudio() {
-    const texto = document.getElementById('texto').value.trim();
     
-    if (!texto) {
-        statusElement.textContent = "Por favor, digite algum texto para baixar.";
-        return;
+    // Função para iniciar a gravação de áudio
+    async function startRecording() {
+        try {
+            // Limpar chunks anteriores
+            audioChunks = [];
+            
+            // Criar contexto de áudio se não existir
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            // Configurar stream de áudio do sistema
+            audioStream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            });
+            
+            // Criar MediaRecorder
+            mediaRecorder = new MediaRecorder(audioStream);
+            
+            // Configurar eventos
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunks.push(event.data);
+                }
+            };
+            
+            mediaRecorder.onstop = () => {
+                // Criar blob com os chunks de áudio
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                
+                // Criar URL para download
+                const audioUrl = URL.createObjectURL(audioBlob);
+                
+                // Criar link de download
+                const downloadLink = document.createElement('a');
+                downloadLink.href = audioUrl;
+                
+                // Gerar nome de arquivo baseado no idioma
+                const lang = languageSelect.value;
+                const langPrefix = lang === 'pt-BR' ? 'pt' : 'en';
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                downloadLink.download = `audio-${langPrefix}-${timestamp}.wav`;
+                
+                // Adicionar à página e clicar automaticamente
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                
+                // Limpar
+                document.body.removeChild(downloadLink);
+                window.URL.revokeObjectURL(audioUrl);
+                
+                // Parar todas as faixas do stream
+                if (audioStream) {
+                    audioStream.getTracks().forEach(track => track.stop());
+                    audioStream = null;
+                }
+                
+                statusMessage.textContent = 'Download de áudio concluído!';
+                isRecording = false;
+            };
+            
+            // Iniciar gravação
+            mediaRecorder.start();
+            isRecording = true;
+            
+        } catch (error) {
+            console.error('Erro ao configurar gravação:', error);
+            
+            // Limpar recursos
+            if (audioStream) {
+                audioStream.getTracks().forEach(track => track.stop());
+                audioStream = null;
+            }
+            
+            isRecording = false;
+            throw error;
+        }
     }
     
-    statusElement.textContent = "Gerando arquivo de áudio...";
-    btnBaixar.disabled = true;
-    
-    const velocidade = document.getElementById('velocidade').value;
-    const idioma = document.getElementById('idioma').value;
-    const voz = idioma === 'en' ? 'en-us' : 'pt-pt';
-    
-    // Gerar áudio com meSpeak
-    meSpeak.speak(texto, { 
-        voice: voz,
-        speed: parseInt(velocidade),
-        pitch: 50,
-        amplitude: 100,
-        rawdata: 'data-url'  // Solicitar dados em formato data-url
-    }, function(success, id, audioData) {
-        if (success && audioData) {
-            // Criar link de download
-            const link = document.createElement('a');
-            link.href = audioData;
-            link.download = 'texto-para-fala.wav';
-            
-            // Adicionar ao documento e clicar
-            document.body.appendChild(link);
-            link.click();
-            
-            // Limpar
-            document.body.removeChild(link);
-            
-            statusElement.textContent = "Download iniciado!";
-            btnBaixar.disabled = false;
-        } else {
-            console.error("Erro ao gerar áudio:", id);
-            statusElement.textContent = "Erro ao gerar arquivo de áudio.";
-            btnBaixar.disabled = false;
+    // Função para parar a gravação
+    function stopRecording() {
+        if (mediaRecorder && isRecording && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+            statusMessage.textContent = 'Processando download de áudio...';
         }
-    });
-}
+    }
+
+    // Verificar periodicamente o estado da síntese de voz
+    // Isso ajuda a garantir que o estado da interface esteja sempre correto
+    setInterval(() => {
+        if (!synth.speaking && isSpeaking) {
+            // Se a síntese parou mas o estado ainda indica que está falando
+            isSpeaking = false;
+            isProcessing = false;
+            playBtn.textContent = 'Reproduzir';
+        }
+    }, 100);
+
+    // Inicialização adicional
+    updateTextStats();
+    updateSpeedValue();
+});
