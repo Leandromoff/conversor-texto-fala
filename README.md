@@ -17,7 +17,7 @@ O Conversor de Texto para Fala oferece uma interface intuitiva para transformar 
 - Controle de velocidade da fala
 - Contagem automática de palavras e caracteres
 - Interface responsiva para uso em dispositivos móveis e desktop
-- Botão para alternância entre modo claro e escuro
+- Ícone no canto superior direito para alternar entre modo claro e escuro
 
 ## Tecnologias Utilizadas
 
@@ -48,7 +48,7 @@ Para melhor experiência e acesso às vozes Google de alta qualidade, recomenda-
 4. Ajuste a velocidade da fala conforme necessário
 5. Clique em "Reproduzir" para ouvir o texto
 6. Para interromper a reprodução, clique em "Parar"
-7. Utilize o botão "Modo Escuro" no cabeçalho para alternar o tema
+7. Use o ícone no canto superior direito para alternar o tema
 
 ## Desenvolvimento
 
