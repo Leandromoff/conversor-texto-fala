@@ -17,7 +17,6 @@ O Conversor de Texto para Fala oferece uma interface intuitiva para transformar 
 - Controle de velocidade da fala
 - Contagem automática de palavras e caracteres
 - Interface responsiva para uso em dispositivos móveis e desktop
-- Modo opcional de SSML para controle avançado de voz
 
 ## Tecnologias Utilizadas
 
@@ -25,7 +24,6 @@ O Conversor de Texto para Fala oferece uma interface intuitiva para transformar 
 - CSS3
 - JavaScript (ES6+)
 - Web Speech API
-- Serviço TTS externo (configurável) para SSML
 
 ## Compatibilidade
 
@@ -50,14 +48,7 @@ Para melhor experiência e acesso às vozes Google de alta qualidade, recomenda-
 5. Clique em "Reproduzir" para ouvir o texto
 6. Para interromper a reprodução, clique em "Parar"
 7. A interface utiliza sempre o tema escuro
-8. (Opcional) Marque "Usar SSML" para enviar o texto com marcação SSML ao serviço externo
 
 ## Desenvolvimento
 
 Este projeto foi desenvolvido como uma versão simplificada inspirada no site [text-to-speech.online](https://www.text-to-speech.online/), utilizando apenas tecnologias web padrão e gratuitas.
-
-## Modo SSML
-
-Para utilizar a geração de voz via SSML é necessário configurar um serviço de TTS externo.
-Edite o arquivo `script.js` e defina `TTS_API_URL` e `TTS_API_KEY` com os dados do seu provedor.
-Quando a opção **Usar SSML** estiver habilitada, o texto será enviado para esse serviço e reproduzido com o áudio retornado.
