@@ -3,6 +3,7 @@ let synth = window.speechSynthesis;
 let utterance = null;
 let isProcessing = false;
 let isSpeaking = false;
+let externalAudio = null;
 
 // Elementos do DOM
 document.addEventListener('DOMContentLoaded', () => {
@@ -14,6 +15,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusMessage = document.getElementById('status-message');
     const wordCount = document.getElementById('word-count');
     const charCount = document.getElementById('char-count');
+    const ssmlToggle = document.getElementById('ssml-toggle');
+
+    // Configurações do serviço TTS externo
+    const TTS_API_URL = 'https://example.com/tts'; // Substitua pelo seu endpoint
+    const TTS_API_KEY = '';
 
     // Textos pré-definidos para cada idioma
     const predefinedTexts = {
@@ -120,7 +126,11 @@ AGI pode pensar e resolver muitos problemas como uma pessoa.`
 
     // Função para parar a reprodução
     function stopSpeaking() {
-        if (synth.speaking) {
+        if (ssmlToggle.checked && externalAudio) {
+            externalAudio.pause();
+            externalAudio.currentTime = 0;
+            externalAudio = null;
+        } else if (synth.speaking) {
             synth.cancel();
         }
         
@@ -189,10 +199,55 @@ AGI pode pensar e resolver muitos problemas como uma pessoa.`
         return null;
     }
 
+    // Função para sintetizar utilizando SSML em serviço externo
+    async function synthesizeWithSSML(ssmlText) {
+        try {
+            const response = await fetch(TTS_API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${TTS_API_KEY}`
+                },
+                body: JSON.stringify({
+                    ssml: ssmlText,
+                    lang: languageSelect.value
+                })
+            });
+
+            if (!response.ok) throw new Error('Falha na requisição');
+
+            const data = await response.arrayBuffer();
+            const blob = new Blob([data], { type: 'audio/mpeg' });
+            const url = URL.createObjectURL(blob);
+
+            externalAudio = new Audio(url);
+            externalAudio.onended = () => {
+                playBtn.textContent = 'Reproduzir';
+                statusMessage.textContent = 'Reprodução concluída.';
+                isProcessing = false;
+                isSpeaking = false;
+            };
+            externalAudio.onerror = () => {
+                playBtn.textContent = 'Reproduzir';
+                statusMessage.textContent = 'Erro ao reproduzir áudio.';
+                isProcessing = false;
+                isSpeaking = false;
+            };
+
+            externalAudio.play();
+        } catch (err) {
+            console.error(err);
+            statusMessage.textContent = 'Erro na síntese SSML.';
+            playBtn.textContent = 'Reproduzir';
+            isProcessing = false;
+            isSpeaking = false;
+        }
+    }
+
     // Função para iniciar a reprodução
     function startSpeaking() {
         if (isProcessing) return;
-        
+
         const text = textInput.value.trim();
         if (text === '') {
             statusMessage.textContent = 'Por favor, digite algum texto para converter em fala.';
@@ -201,6 +256,14 @@ AGI pode pensar e resolver muitos problemas como uma pessoa.`
 
         isProcessing = true;
         isSpeaking = true;
+
+        if (ssmlToggle.checked) {
+            statusMessage.textContent = 'Processando via SSML...';
+            playBtn.textContent = 'Parar';
+            synthesizeWithSSML(text);
+            return;
+        }
+
         statusMessage.textContent = 'Processando...';
         playBtn.textContent = 'Parar';
 
@@ -241,7 +304,7 @@ AGI pode pensar e resolver muitos problemas como uma pessoa.`
     // Verificar periodicamente o estado da síntese de voz
     // Isso ajuda a garantir que o estado da interface esteja sempre correto
     setInterval(() => {
-        if (!synth.speaking && isSpeaking) {
+        if (!ssmlToggle.checked && !synth.speaking && isSpeaking) {
             // Se a síntese parou mas o estado ainda indica que está falando
             isSpeaking = false;
             isProcessing = false;
