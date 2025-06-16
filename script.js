@@ -37,13 +37,6 @@ AGI pode pensar e resolver muitos problemas como uma pessoa.`
     // Inicialização
     checkBrowserSupport();
     loadVoices();
-
-    // Definir ícone inicial do modo
-    if (document.body.classList.contains('dark-mode')) {
-        darkModeToggle.textContent = '☀️';
-    } else {
-        darkModeToggle.textContent = '🌙';
-    }
     
     // Event listeners
     textInput.addEventListener('input', updateTextStats);
@@ -119,9 +112,9 @@ AGI pode pensar e resolver muitos problemas como uma pessoa.`
     function toggleDarkMode() {
         document.body.classList.toggle('dark-mode');
         if (document.body.classList.contains('dark-mode')) {
-            darkModeToggle.textContent = '☀️';
+            darkModeToggle.textContent = 'Modo Claro';
         } else {
-            darkModeToggle.textContent = '🌙';
+            darkModeToggle.textContent = 'Modo Escuro';
         }
     }
 
