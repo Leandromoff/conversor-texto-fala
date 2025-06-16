@@ -11,7 +11,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const speedControl = document.getElementById('speed-control');
     const speedValue = document.getElementById('speed-value');
     const playBtn = document.getElementById('play-btn');
-    const darkModeToggle = document.getElementById('dark-mode-toggle');
     const statusMessage = document.getElementById('status-message');
     const wordCount = document.getElementById('word-count');
     const charCount = document.getElementById('char-count');
@@ -38,18 +37,11 @@ AGI pode pensar e resolver muitos problemas como uma pessoa.`
     checkBrowserSupport();
     loadVoices();
 
-    // Definir ícone inicial do modo
-    if (document.body.classList.contains('dark-mode')) {
-        darkModeToggle.textContent = '☀️';
-    } else {
-        darkModeToggle.textContent = '🌙';
-    }
     
     // Event listeners
     textInput.addEventListener('input', updateTextStats);
     speedControl.addEventListener('input', updateSpeedValue);
     playBtn.addEventListener('click', handlePlayStop);
-    darkModeToggle.addEventListener('click', toggleDarkMode);
     
     // Adicionar event listener para mudança de idioma
     languageSelect.addEventListener('change', handleLanguageChange);
@@ -116,14 +108,6 @@ AGI pode pensar e resolver muitos problemas como uma pessoa.`
         speedValue.textContent = `${speed}x`;
     }
 
-    function toggleDarkMode() {
-        document.body.classList.toggle('dark-mode');
-        if (document.body.classList.contains('dark-mode')) {
-            darkModeToggle.textContent = '☀️';
-        } else {
-            darkModeToggle.textContent = '🌙';
-        }
-    }
 
     // Função para lidar com o botão de reprodução/parada
     function handlePlayStop() {
